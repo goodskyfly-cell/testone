@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>九九乘法大挑戰 - HTML App</title>
+    <!-- 載入 Tailwind CSS CDN，用於快速美化介面 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 React, ReactDOM, 和 Babel CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+      /* 設定字體為 Inter，確保中文字體也能優美顯示 */
+      body {
+        font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      }
+    </style>
+</head>
+<body>
+    <!-- 應用程式的根容器 -->
+    <div id="root"></div>
+
+    <!-- 所有的 React/JSX 程式碼都放在這個 <script> 區塊中，並設定 type="text/babel" -->
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // 輔助函式：產生介於 min 和 max 之間的隨機整數
+        const getRandomInt = (min, max) => {
+          return Math.floor(Math.random() * (max - min + 1)) + min;
+        };
+
+        // 輔助函式：打亂陣列
+        const shuffleArray = (array) => {
+          for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+          }
+          return array;
+        };
+
+        // 主要應用程式元件
+        const App = () => {
+          // 遊戲狀態
+          const [num1, setNum1] = useState(0);
+          const [num2, setNum2] = useState(0);
+          const [correctAnswer, setCorrectAnswer] = useState(0);
+          const [options, setOptions] = useState([]);
+          const [isGameActive, setIsGameActive] = useState(false);
+          const [score, setScore] = useState(0);
+          const [isAnswered, setIsAnswered] = useState(false);
+          const [selectedOption, setSelectedOption] = useState(null);
+
+          // 計時器狀態
+          const [timerInput, setTimerInput] = useState(60); // 預設 60 秒
+          const [timeRemaining, setTimeRemaining] = useState(60);
+          
+          // 錯誤訊息狀態 (取代 alert())
+          const [notificationMessage, setNotificationMessage] = useState('');
+
+          // 顯示通知
+          const showNotification = (message) => {
+            setNotificationMessage(message);
+            setTimeout(() => setNotificationMessage(''), 3000); // 3 秒後自動消失
+          };
+
+          // --- 遊戲邏輯函數 ---
+
+          // 產生新問題
+          const generateNewQuestion = useCallback(() => {
+            // 產生兩個 1 到 9 之間的數字
+            const newNum1 = getRandomInt(1, 9);
+            const newNum2 = getRandomInt(1, 9);
+            const correct = newNum1 * newNum2;
+
+            setNum1(newNum1);
+            setNum2(newNum2);
+            setCorrectAnswer(correct);
+            setIsAnswered(false);
+            setSelectedOption(null);
+
+            // 產生選項
+            const newOptions = [correct];
+            let uniqueOptions = new Set([correct]);
+
+            // 產生 3 個錯誤答案
+            while (newOptions.length < 4) {
+              // 錯誤答案範圍： (正確答案 - 5) 到 (正確答案 + 5)，但至少為 1 且不超過 81
+              const minVal = Math.max(1, correct - 5);
+              const maxVal = Math.min(81, correct + 5);
+              
+              let incorrect;
+              // 確保生成的錯誤答案不等於正確答案
+              do {
+                incorrect = getRandomInt(minVal, maxVal);
+              } while (uniqueOptions.has(incorrect));
+
+              newOptions.push(incorrect);
+              uniqueOptions.add(incorrect);
+            }
+
+            // 打亂選項的順序
+            setOptions(shuffleArray(newOptions));
+          }, []);
+
+          // 處理答案選擇
+          const handleAnswerSelect = (answer) => {
+            if (!isGameActive || isAnswered) return;
+
+            setSelectedOption(answer);
+            setIsAnswered(true);
+
+            if (answer === correctAnswer) {
+              // 答對，增加分數
+              setScore(prevScore => prevScore + 1);
+
+              // 稍微延遲後產生下一題
+              setTimeout(() => {
+                generateNewQuestion();
+              }, 500); // 0.5 秒後進行下一題
+            } else {
+              // 答錯，不增加分數，但標記錯誤
+              // 仍然延遲後產生下一題
+              setTimeout(() => {
+                generateNewQuestion();
+              }, 1000); // 1 秒後進行下一題，讓學生看清楚錯誤
+            }
+          };
+
+          // 啟動或重設遊戲
+          const startGame = () => {
+            const initialTime = parseInt(timerInput);
+            if (isNaN(initialTime) || initialTime <= 0) {
+              showNotification("請輸入有效的倒數秒數 (大於 0)！");
+              return;
+            }
+            setScore(0);
+            setTimeRemaining(initialTime);
+            setIsGameActive(true);
+            generateNewQuestion();
+          };
+
+          // --- 計時器效果 ---
+
+          useEffect(() => {
+            let timer;
+            if (isGameActive && timeRemaining > 0) {
+              // 每秒減少時間
+              timer = setInterval(() => {
+                setTimeRemaining(prevTime => prevTime - 1);
+              }, 1000);
+            } else if (timeRemaining === 0 && isGameActive) {
+              // 時間結束，結束遊戲
+              setIsGameActive(false);
+              clearInterval(timer);
+            }
+
+            return () => clearInterval(timer); // 清理計時器
+          }, [isGameActive, timeRemaining]);
+
+          // --- 渲染輔助函數 ---
+
+          // 根據選項的狀態決定按鈕的樣式
+          const getOptionButtonClasses = (option) => {
+            if (!isAnswered) {
+              // 尚未回答：標準樣式
+              return "bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 transition duration-200 ease-in-out";
+            }
+
+            // 已回答
+            if (option === correctAnswer) {
+              // 正確答案：綠色
+              return "bg-green-500 ring-4 ring-green-300 transform scale-105";
+            } else if (option === selectedOption) {
+              // 選擇的錯誤答案：紅色
+              return "bg-red-500 ring-4 ring-red-300 transform scale-95";
+            } else {
+              // 其他錯誤答案：灰色
+              return "bg-gray-400 opacity-70";
+            }
+          };
+          
+          // 格式化時間（分鐘:秒）
+          const formatTime = (seconds) => {
+            const min = Math.floor(seconds / 60);
+            const sec = seconds % 60;
+            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+          };
+
+          // --- 介面渲染 ---
+
+          return (
+            <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4 sm:p-8">
+              
+              {/* 頂部通知訊息框 (取代 alert) */}
+              {notificationMessage && (
+                <div 
+                  className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white p-3 rounded-xl shadow-2xl z-50 transition-opacity duration-500 animate-pulse"
+                  role="alert"
+                >
+                  <p className="font-semibold">{notificationMessage}</p>
+                </div>
+              )}
+
+              <header className="w-full max-w-4xl text-center mb-8">
+                <h1 className="text-4xl sm:text-5xl font-extrabold text-indigo-700 mb-2">九九乘法大挑戰</h1>
+                <p className="text-lg text-gray-500">使用平板練習乘法，挑戰您的計時！</p>
+              </header>
+
+              {/* 遊戲控制區塊 */}
+              <div className="w-full max-w-4xl bg-white shadow-xl rounded-2xl p-6 sm:p-8 mb-8 border border-indigo-100">
+                <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+                  
+                  {/* 倒數計時設定 */}
+                  <div className="flex items-center space-x-3 w-full sm:w-auto">
+                    <label htmlFor="timer-input" className="text-lg font-medium text-gray-700 whitespace-nowrap">
+                      設定秒數:
+                    </label>
+                    <input
+                      id="timer-input"
+                      type="number"
+                      value={timerInput}
+                      onChange={(e) => setTimerInput(Math.max(1, parseInt(e.target.value) || 0))}
+                      disabled={isGameActive}
+                      className="w-24 p-2 border-2 border-indigo-300 rounded-lg text-lg text-center font-bold focus:ring-indigo-500 focus:border-indigo-500 transition duration-150"
+                      min="1"
+                    />
+                  </div>
+
+                  {/* 開始/重新開始按鈕 */}
+                  <button
+                    onClick={startGame}
+                    disabled={isGameActive && timeRemaining > 0}
+                    className={`
+                      w-full sm:w-48 py-3 px-6 text-xl font-bold text-white rounded-xl shadow-lg transform transition duration-300 ease-in-out
+                      ${isGameActive && timeRemaining > 0
+                        ? 'bg-gray-500 cursor-not-allowed'
+                        : 'bg-green-500 hover:bg-green-600 active:bg-green-700 hover:scale-105 shadow-green-300/50'
+                      }
+                    `}
+                  >
+                    {isGameActive && timeRemaining > 0 ? '遊戲進行中...' : '開始挑戰 / 重設'}
+                  </button>
+                </div>
+              </div>
+
+              {/* 遊戲主區塊 */}
+              <main className="w-full max-w-4xl bg-white shadow-xl rounded-2xl p-6 sm:p-10 border border-indigo-100 flex flex-col items-center">
+                
+                {/* 計時器和分數顯示 */}
+                <div className="flex justify-around w-full mb-8 text-center">
+                  <div className="p-4 bg-indigo-50 rounded-xl w-1/2 mx-2">
+                    <p className="text-sm font-semibold text-indigo-500 uppercase">倒數計時</p>
+                    <p className="text-3xl sm:text-4xl font-extrabold text-indigo-800 mt-1">
+                      {formatTime(timeRemaining)}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-xl w-1/2 mx-2">
+                    <p className="text-sm font-semibold text-green-500 uppercase">答對題數</p>
+                    <p className="text-3xl sm:text-4xl font-extrabold text-green-800 mt-1">
+                      {score}
+                    </p>
+                  </div>
+                </div>
+
+
+                {/* 遊戲結果/算式顯示 */}
+                {!isGameActive && timeRemaining === 0 ? (
+                  <div className="text-center p-8 bg-yellow-50 rounded-xl border-4 border-yellow-300">
+                    <h2 className="text-3xl font-bold text-yellow-700 mb-3">挑戰結束！</h2>
+                    <p className="text-2xl text-gray-700">您在 {timerInput} 秒內答對了 <span className="text-green-600 font-extrabold text-4xl">{score}</span> 題！</p>
+                    <button
+                      onClick={startGame}
+                      className="mt-6 py-3 px-8 text-xl font-bold text-white rounded-xl bg-indigo-500 hover:bg-indigo-600 shadow-lg hover:shadow-indigo-400/50 transition duration-300 ease-in-out transform hover:scale-105"
+                    >
+                      再次挑戰
+                    </button>
+                  </div>
+                ) : !isGameActive ? (
+                  <div className="text-center p-8 text-gray-500">
+                    <h2 className="text-3xl font-bold mb-3">準備好了嗎？</h2>
+                    <p className="text-xl">設定秒數後，點擊「開始挑戰」來測驗九九乘法！</p>
+                  </div>
+                ) : (
+                  <div className="w-full">
+                    {/* 算式顯示 */}
+                    <div className="text-center mb-8">
+                      <span className="text-6xl sm:text-8xl font-extrabold text-indigo-600">
+                        {num1}
+                      </span>
+                      <span className="text-5xl sm:text-7xl font-light text-gray-500 mx-4 sm:mx-8">
+                        ×
+                      </span>
+                      <span className="text-6xl sm:text-8xl font-extrabold text-indigo-600">
+                        {num2}
+                      </span>
+                      <span className="text-5xl sm:text-7xl font-light text-gray-500 mx-4 sm:mx-8">
+                        =
+                      </span>
+                      <span className="text-6xl sm:text-8xl font-extrabold text-gray-300">
+                        ?
+                      </span>
+                    </div>
+
+                    {/* 選項按鈕 */}
+                    <div className="grid grid-cols-2 gap-4 sm:gap-6">
+                      {options.map((option, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleAnswerSelect(option)}
+                          disabled={!isGameActive || isAnswered}
+                          className={`
+                            py-5 sm:py-8 text-3xl sm:text-4xl font-extrabold text-white rounded-xl shadow-lg
+                            ${getOptionButtonClasses(option)}
+                            ${!isGameActive || isAnswered ? 'opacity-70 cursor-not-allowed' : 'hover:scale-105 active:scale-100'}
+                          `}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </main>
+
+              <footer className="mt-8 text-center text-gray-400 text-sm">
+                <p>為學生的乘法練習設計，建議在平板或大螢幕上操作。</p>
+              </footer>
+            </div>
+          );
+        };
+
+        // 將 App 元件渲染到 DOM
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
